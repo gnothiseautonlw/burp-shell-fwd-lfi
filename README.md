@@ -1,5 +1,5 @@
 # Burp Extension: Shell FWD/FLI
-*A shell-like environment in burpsuite*
+> A shell-like environment in burpsuite
 
 # Installation
 ## Dependencies
@@ -14,7 +14,7 @@ wget https://repo1.maven.org/maven2/org/python/jython-standalone/2.7.2/jython-st
 
 ## Dependencies configuration
 Open Burpsuite
-   * In the 'Extensions'-tab, click the 'options' tab
+   * In the 'Extender'-tab, click the 'options' tab
       * In the section 'Python Environment'
          * Click 'Select file'
          * Navigate to /opt/jython
@@ -27,4 +27,12 @@ cd /opt
 git clone https://github.com/gnothiseautonlw/burp-shell-fwd-lfi.git
 ```
 
-
+## Add plugin to Burpsuite
+Open Burpsuite
+  * In the 'Extender'-tab, with the 'Extensions' tab selected
+    * Click the 'Add'-button
+      * Select 'Python' as Extension type
+      * Click 'Select file...'
+      * Navigate to '/opt/burp-shell-fwd-lfi/
+      * Select 'shell.py'
+      * Click 'next'
