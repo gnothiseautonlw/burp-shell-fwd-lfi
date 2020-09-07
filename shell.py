@@ -20,6 +20,7 @@ from javax.swing import BorderFactory
 from javax.swing import BoxLayout
 from javax.swing import JButton
 from javax.swing import JCheckBox
+from javax.swing import JComboBox
 from javax.swing import JLabel
 from javax.swing import JMenuItem
 from javax.swing import JPanel
@@ -80,19 +81,21 @@ class ShellController:
         self._consoleController = self.ConsoleController(self)
         self._positionsController = self.PositionsController(self)
         self._configurationController = self.ConfigurationController(self)
-        self._outputIsolator = ["3535start3535", "3535end3535"]
-        self._virtualPersistence = True
-        self._tabCompletion = True
+        self._outputCompleteResponse = True
+        self._outputIsolator = None
+        self._removeSpaces = False
+        self._removeHtmlTags = False
+        self._virtualPersistence = False
+        self._tabCompletion = False
         self._urlEncode = True
-        self._outputCompleteResponse = False
         self._waf = False
 
     def getMainComponent(self):
         # tabsOriginal with request/response viewers
         self._tabsMain = JTabbedPane()
         # Add to the main tabs
-        self._tabsMain.addTab("Sessions", self._consoleController.getMainComponent())
         self._tabsMain.addTab("Positions", self._positionsController.getMainComponent())
+        self._tabsMain.addTab("Sessions", self._consoleController.getMainComponent())
         self._tabsMain.addTab("Configuration", self._configurationController.getMainComponent())
         return self._tabsMain
 
@@ -106,6 +109,8 @@ class ShellController:
                                      'positionStart': None, 'positionEnd': None}
 
         # TODO I'll need to delegate this a combobox or table, but for now, I'll select the first one
+        self._positionsController._buttonAdd.setEnabled(True)
+        self._consoleController.resetOutput()
         self._positionsController.setEditor(request)
 
     def sessionIds(self):
@@ -169,11 +174,13 @@ class ShellController:
         Utils.out("ShellController > getRequestWithCommand")
         original_request = self.requests()[requestId]
         original_request_data = original_request['data']
+        original_request_service = original_request['httpService']
         Utils.out("Utils.bytesToString(original_request_data)")
         Utils.out(Utils.bytesToString(original_request_data))
-        modified_request = Utils.changeRawData(original_request_data, original_request['positionStart'], original_request['positionEnd'], cmd)
-        Utils.out("Utils.bytesToString(modified_request)")
+        modified_request = Utils.changeRawData(original_request_data, original_request['positionStart'], original_request['positionEnd'], cmd, original_request_service)
+        Utils.out("Utils.bytesToString(modified_request) ------")
         Utils.out(Utils.bytesToString(modified_request))
+        Utils.out("Utils.bytesToString(modified_request) ---END---")
         return modified_request
 
     def getRequestHttpService(self, requestId):
@@ -221,6 +228,12 @@ class ShellController:
         def sendCommand(self, requestId, cmd, directTo):
             Utils.out("ConsoleController > sendCommand > 'cmd'")
             Utils.out(cmd)
+            if cmd == 'clear':
+                self.resetOutput()
+                self._commandHistory.append(cmd)
+                self.resetHistoryIndex()
+                self.clearCmd()
+                return
             cmdModified = cmd
             requestHttpMethod = self._parent.getRequestHttpService(requestId)
             #If I use virtual persistence and there's already a pwd set
@@ -268,6 +281,7 @@ class ShellController:
             # if I can reform the request to a post request and still have it work
             # if base 64 is available
             # if bash is available
+            self.setPwd(None)
             if Utils.shellController._virtualPersistence and Utils.shellController._outputIsolator:
                 Utils.out("startSession > virtualPersistence enabled > Requesting pwd")
                 self.sendCommand(self._parent.currentRequestId(), Commands.pwd(Commands.OS_LINUX), 'pwd')
@@ -278,9 +292,13 @@ class ShellController:
                     self.printCommand(self._commandHistory[-1])
             except:
                 pass
+
             self._consoleOutput.append("\n" + text)
             #auto scroll down if needed
             self._consoleOutput.setCaretPosition(self._consoleOutput.getDocument().getLength())
+
+        def resetOutput(self):
+            Utils.setConsole('')
 
         def printCommand(self, cmd):
             self._consoleOutput.append("\n" + self._pwd + "# " + cmd)
@@ -290,7 +308,11 @@ class ShellController:
 
         def setPwd(self, pwd):
             self._pwd = pwd
-            self._consolePwd.setText(pwd)
+            if pwd is None:
+                self._consolePwd.setText('')
+            else:
+                self._consolePwd.setText(pwd)
+            Utils.consoleController._mainPanel.revalidate()
 
         def pwd(self):
             return self._pwd
@@ -424,7 +446,7 @@ class ShellController:
             self._rightPanel.setBorder(EmptyBorder(10, 10, 10, 10))
             #Right panel - buttons
             self._buttonAdd = JButton("        Add $        ", actionPerformed=self.buttonAddClick)
-            self._buttonClear = JButton("       Clear $       ") #, actionPerformed=None
+            self._buttonClear = JButton("       Clear $       ", actionPerformed=self.buttonClearClick) #, actionPerformed=None
             # Right panel - add components
             self._rightPanel.add(self._buttonAdd)
             self._rightPanel.add(self._buttonClear)
@@ -435,11 +457,17 @@ class ShellController:
             return self._mainPanel
 
         def buttonAddClick(self, e):
-            Utils.out("Button click")
+            Utils.out("Button Add click")
             if self._positionsEditor.getSelectedText():
                 #TODO: For if it's a messageeditor in stead of texteditor Utils.out(self._positionsEditor.getSelectedData())
                 self.addPosition(self._positionsEditor.getSelectionBounds())
                 self._parent._consoleController.startSession()
+                self._buttonAdd.setEnabled(False)
+
+        def buttonClearClick(self, e):
+            Utils.out("Button Clear click")
+            self.setEditor(self._parent.currentRequestRaw())
+            self._buttonAdd.setEnabled(True)
 
         def setEditor(self, request_in_bytes):
             self._positionsEditor.setText(request_in_bytes)
@@ -457,32 +485,109 @@ class ShellController:
 
         def getMainComponent(self):
             self._mainPanel = JPanel()
-            self._mainPanel.setLayout(BoxLayout(self._mainPanel, BoxLayout.Y_AXIS))
-            self._outputIsolatorSwitch = JCheckBox("Use output isolator")
-            self._outputIsolatorSwitch.setSelected(True)
-            self._outputIsolatorSwitch.addItemListener(self.OutputIsolatorSwitchListener())
-            self._mainPanel.add(self._outputIsolatorSwitch)
-            self._tabCompletionSwitch = JCheckBox("Use tab-completion")
-            self._tabCompletionSwitch.setSelected(True)
-            self._tabCompletionSwitch.addItemListener(self.TabCompletionSwitchListener())
-            self._mainPanel.add(self._tabCompletionSwitch)
-            self._virtualPersistenceSwitch = JCheckBox("Use virtual persistence")
-            self._virtualPersistenceSwitch.setSelected(True)
-            self._virtualPersistenceSwitch.addItemListener(self.VirtualPersistenceSwitchListener())
-            self._mainPanel.add(self._virtualPersistenceSwitch)
+            #self._mainPanel.setLayout(BoxLayout(self._mainPanel, BoxLayout.Y_AXIS))
+            self._mainPanel.setLayout(BorderLayout())
+            self._titlePanel = JPanel(GridLayout(0, 1))
+            self._titlePanel.setBorder(EmptyBorder(10, 20, 10, 10))
+            self._titleText = JLabel("Mode configuration")
+            self._titleText.setForeground(COLOR_BURP_TITLE_ORANGE)
+            self._titleText.setFont(self._titleText.getFont().deriveFont(16.0))
+            self._titleSubtitleText = JTextArea("Select a mode that works best for the type of exploit you are dealing with.")
+            self._titleSubtitleText.setEditable(False)
+            self._titleSubtitleText.setLineWrap(True)
+            self._titleSubtitleText.setWrapStyleWord(True)
+            self._titleSubtitleText.setHighlighter(None)
+            self._titleSubtitleText.setBorder(None)
+
+            #Local File Inclusion (LFI): Explore files
+            #Command injection (visual): Shell
+            #Command injection (blind):  Shell
+            modes = ['Select mode...', 'Local File Inclusion (LFI) - Discover files', 'OS Command injection (visual) - Shell']
+            self._cboModes = JComboBox(modes)
+            self._cboModes.addActionListener(self.cboModesChanged())
+
+            self._titlePanel.add(self._titleText)
+            self._titlePanel.add(self._titleSubtitleText)
+            self._titlePanel.add(self._cboModes)
+
+            self._mainPanel.add(self._titlePanel, BorderLayout.NORTH)
+
+            self._switchPanel = JPanel()
+            self._switchPanel.setLayout(BoxLayout(self._switchPanel, BoxLayout.Y_AXIS))
+            self._switchPanel.setBorder(EmptyBorder(5, 30, 10, 10))
+            self._outputCompleteResponseSwitch = JCheckBox("Use full response (not only the response body)")
+            self._outputCompleteResponseSwitch.setSelected(True)
+            self._outputCompleteResponseSwitch.addItemListener(self.OutputCompleteResponseSwitchListener())
+            self._switchPanel.add(self._outputCompleteResponseSwitch)
             self._urlEncodeSwitch = JCheckBox("Use url encode")
             self._urlEncodeSwitch.setSelected(True)
             self._urlEncodeSwitch.addItemListener(self.UrlEncodeSwitchListener())
-            self._mainPanel.add(self._urlEncodeSwitch)
-            self._outputCompleteResponseSwitch = JCheckBox("Use full response (not only the response body)")
-            self._outputCompleteResponseSwitch.setSelected(False)
-            self._outputCompleteResponseSwitch.addItemListener(self.OutputCompleteResponseSwitchListener())
-            self._mainPanel.add(self._outputCompleteResponseSwitch)
+            self._switchPanel.add(self._urlEncodeSwitch)
+            self._outputIsolatorSwitch = JCheckBox("Use output isolator")
+            self._outputIsolatorSwitch.setSelected(False)
+            self._outputIsolatorSwitch.addItemListener(self.OutputIsolatorSwitchListener())
+            self._switchPanel.add(self._outputIsolatorSwitch)
+            self._removeSpacesSwitch = JCheckBox("Remove leading and trailing spaces")
+            self._removeSpacesSwitch.setSelected(False)
+            self._removeSpacesSwitch.addItemListener(self.SpacesSwitch())
+            self._switchPanel.add(self._removeSpacesSwitch)
+            self._removeHtmlTagsSwitch = JCheckBox("Remove html-tags (regex '<.*?>')")
+            self._removeHtmlTagsSwitch.setSelected(False)
+            self._removeHtmlTagsSwitch.addItemListener(self.HtmlTagsSwitch())
+            self._switchPanel.add(self._removeHtmlTagsSwitch)
+            self._tabCompletionSwitch = JCheckBox("Use tab-completion")
+            self._tabCompletionSwitch.setSelected(False)
+            self._tabCompletionSwitch.addItemListener(self.TabCompletionSwitchListener())
+            self._switchPanel.add(self._tabCompletionSwitch)
+            self._virtualPersistenceSwitch = JCheckBox("Use virtual persistence")
+            self._virtualPersistenceSwitch.setSelected(False)
+            self._virtualPersistenceSwitch.addItemListener(self.VirtualPersistenceSwitchListener())
+            self._switchPanel.add(self._virtualPersistenceSwitch)
             self._wafSwitch = JCheckBox("WAF: Prepend each non-whitespace character (regex '\\w') with '\\'")
             self._wafSwitch.setSelected(False)
             self._wafSwitch.addItemListener(self.WafSwitch())
-            self._mainPanel.add(self._wafSwitch)
+            self._switchPanel.add(self._wafSwitch)
+            self._mainPanel.add(self._switchPanel, BorderLayout.CENTER)
             return self._mainPanel
+
+        class cboModesChanged(ActionListener):
+            def actionPerformed(self, e):
+                cboModes = e.getSource()
+                mode = cboModes.getSelectedItem()
+                if mode == 'Local File Inclusion (LFI) - Discover files':
+                    #Disable output isolator
+                    Utils.shellController._outputIsolator = None
+                    Utils.outputIsolator = None
+                    Utils._outputIsolator = None
+                    Utils.configurationController._outputIsolatorSwitch.setSelected(False)
+                    Utils.configurationController._outputIsolatorSwitch.setEnabled(False)
+                    #Disable remove leading and trailing spaces
+                    Utils.shellController._removeSpaces = False
+                    Utils.configurationController._removeSpacesSwitch.setSelected(False)
+                    Utils.configurationController._removeSpacesSwitch.setEnabled(False)
+                    #Disable remove html tags
+                    Utils.shellController._removeHtmlTags = False
+                    Utils.configurationController._removeHtmlTagsSwitch.setSelected(False)
+                    Utils.configurationController._removeHtmlTagsSwitch.setEnabled(False)
+                    #Disable tab-completion
+                    Utils.shellController._tabCompletion = False
+                    Utils.configurationController._tabCompletionSwitch.setSelected(False)
+                    Utils.configurationController._tabCompletionSwitch.setEnabled(False)
+                    #Disable virtual peristence
+                    Utils.shellController._virtualPersistence = False
+                    Utils.configurationController._virtualPersistenceSwitch.setSelected(False)
+                    Utils.configurationController._virtualPersistenceSwitch.setEnabled(False)
+                    #Disable WAF
+                    Utils.shellController._waf = False
+                    Utils.configurationController._wafSwitch.setSelected(False)
+                    Utils.configurationController._wafSwitch.setEnabled(False)
+                if mode == 'OS Command injection (visual) - Shell' or mode == 'Select mode...':
+                    Utils.configurationController._outputIsolatorSwitch.setEnabled(True)
+                    Utils.configurationController._removeSpacesSwitch.setEnabled(True)
+                    Utils.configurationController._removeHtmlTagsSwitch.setEnabled(True)
+                    Utils.configurationController._tabCompletionSwitch.setEnabled(True)
+                    Utils.configurationController._virtualPersistenceSwitch.setEnabled(True)
+                    Utils.configurationController._wafSwitch.setEnabled(True)
 
         class OutputIsolatorSwitchListener(ItemListener):
             def itemStateChanged(self, e):
@@ -502,6 +607,19 @@ class ShellController:
                     Utils.outputIsolator = None
                     Utils._outputIsolator = None
 
+        class SpacesSwitch(ItemListener):
+            def itemStateChanged(self, e):
+                if e.getStateChange() == ItemEvent.SELECTED:
+                    Utils.shellController._removeSpaces = True
+                elif e.getStateChange() == ItemEvent.DESELECTED:
+                    Utils.shellController._removeSpaces = False
+
+        class HtmlTagsSwitch(ItemListener):
+            def itemStateChanged(self, e):
+                if e.getStateChange() == ItemEvent.SELECTED:
+                    Utils.shellController._removeHtmlTags = True
+                elif e.getStateChange() == ItemEvent.DESELECTED:
+                    Utils.shellController._removeHtmlTags = False
 
         class TabCompletionSwitchListener(ItemListener):
             def itemStateChanged(self, e):
@@ -515,6 +633,7 @@ class ShellController:
                 if e.getStateChange() == ItemEvent.SELECTED:
                     Utils.shellController._virtualPersistence = True
                 elif e.getStateChange() == ItemEvent.DESELECTED:
+                    Utils.consoleController.setPwd(None)
                     Utils.shellController._virtualPersistence = False
 
         class UrlEncodeSwitchListener(ItemListener):
@@ -572,12 +691,22 @@ class GetThreadForRequest(Runnable):
             self.sendTo(self._directTo, output)
 
     def sendTo(self, output, text):
+        if Utils.shellController._removeHtmlTags:
+            text_modified = re.sub('<.*?>', '', text)
+        else:
+            text_modified = text
+
+        if Utils.shellController._removeSpaces:
+            text_modified.strip()
+            text_modified = re.sub('^\s*', '', text_modified, flags=re.MULTILINE)
+            text_modified = re.sub('\s*$', '', text_modified, flags=re.MULTILINE)
+
         if output == 'pwd':
-            Utils.setPwd(text)
+            Utils.setPwd(text_modified)
         if output == 'tabComplete':
-            Utils.setTabComplete(text)
+            Utils.setTabComplete(text_modified)
         if output == 'console':
-            Utils.appendOutput(text)
+            Utils.appendOutput(text_modified)
 
 class Utils:
     @classmethod
@@ -592,6 +721,8 @@ class Utils:
         cls._stderr = PrintWriter(cls._callbacks.getStderr(), True)
         cls._shellController = cls._parent._shellController
         cls.shellController = cls._shellController
+        cls._configurationController = cls.shellController._configurationController
+        cls.configurationController = cls._configurationController
         cls._outputIsolator = cls._shellController._outputIsolator
         cls.outputIsolator = cls._outputIsolator
         cls._consoleController = cls._shellController._consoleController
@@ -603,6 +734,8 @@ class Utils:
         cls.consoleInput = cls._consoleInput
         cls._consoleOutput = cls._consoleController._consoleOutput
         cls.consoleOutput = cls._consoleOutput
+        cls._outputIsolatorSwitch = cls.configurationController._outputIsolatorSwitch
+        cls.outputIsolatorSwitch = cls._outputIsolatorSwitch
 
     @classmethod
     def setPwd(cls, text):
@@ -706,12 +839,24 @@ class Utils:
         return iHttpRequestResponse.getResponse()
 
     @classmethod
-    def changeRawData(cls, rawData, start, end, newContent):
+    def changeRawData(cls, rawData, start, end, newContent, service=None):
         """In raw bytes: replace everything that's between the 'start' and 'end' position
         with the new content"""
         modified_raw_data = rawData[0:start]
         modified_raw_data = modified_raw_data + Utils.stringToBytes(newContent)
         modified_raw_data = modified_raw_data + rawData[end:]
+
+        info = Utils.helpers.analyzeRequest(service, modified_raw_data)
+        body_offset = info.getBodyOffset()
+        body = Utils.bytesToString(modified_raw_data[body_offset:])
+        body_length = len(body)
+        headers = info.getHeaders()
+        headers_modified = []
+        for header in headers:
+            if "content-length:" in header.lower():
+                header = "Content-Length: " + str(body_length)
+            headers_modified.append(header)
+        modified_raw_data = Utils.helpers.buildHttpMessage(headers_modified, modified_raw_data)
         return modified_raw_data
 
     @classmethod
