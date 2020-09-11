@@ -39,5 +39,5 @@ Open Burpsuite
       * Click 'next'
 
 # Usage and principles
-This article explains how to use the plugin and the principles and work it applies behind the screens:
+This article explains how to use the plugin. It will also demystify the principles and work that happens behind the scenes of this plugin:
 https://docs.google.com/document/d/1Vk-CPFgylO79IJaSRq930qDs7N-rQnVHpRp2I9ooqR8/edit?usp=sharing
