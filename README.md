@@ -1,4 +1,4 @@
-# Burp Extension: Shell FWD/FLI
+# Burp Extension: Shell FWD/LFI
 > A shell-like environment in burpsuite
 > ![Shell Demo](/demo/shell_command_injection_mode_without_config.gif)
 
