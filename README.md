@@ -4,7 +4,7 @@
 
 # Installation
 ## Dependencies
-> Burpsuite needs 'jython' to run this plugin. If you haven't already installed it:
+Burpsuite needs 'jython' to run this plugin. If you haven't already installed it:
 ```
 cd /opt
 sudo mkdir jython
@@ -37,3 +37,7 @@ Open Burpsuite
       * Navigate to '/opt/burp-shell-fwd-lfi/
       * Select 'shell.py'
       * Click 'next'
+
+# Usage and principles
+This article explains how to use the plugin and the principles and work it applies behind the screens:
+https://docs.google.com/document/d/1Vk-CPFgylO79IJaSRq930qDs7N-rQnVHpRp2I9ooqR8/edit?usp=sharing
