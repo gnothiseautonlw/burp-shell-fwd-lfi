@@ -1,5 +1,6 @@
 # Burp Extension: Shell FWD/FLI
 > A shell-like environment in burpsuite
+> ![Shell Demo](/demo/shell_command_injection_mode_without_config.gif)
 
 # Installation
 ## Dependencies
